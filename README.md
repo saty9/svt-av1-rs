@@ -9,6 +9,20 @@ It is a simple [binding][1] and safe abstraction over [SVT-AV1][2].
 
 By default the bindings are generated using the headers and libraries that ought to be present in the system.
 
+If you want to build the svt-av1 library from source you will need to set these env variables:
+
+* PKG_CONFIG_PATH=/PATH/TO/SVT-AV1/Build/linux/Debug
+* CPATH=/PATH/TO/SVT-AV1/Source/API
+* LIBRARY_PATH=/PATH/TO/SVT-AV1/Bin/Debug
+* LD_LIBRARY_PATH=/PATH/TO/SVT-AV1/Bin/Debug
+
+these assume you are using a debug build of the library
+
+###Requirements linux
+
+* libclang
+* llvm
+
 ## TODO
 - [x] Simple bindings
 - [ ] Safe abstraction
