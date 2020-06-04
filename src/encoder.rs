@@ -1,20 +1,22 @@
 
 use crate::ffi::*;
-use std::marker::PhantomData;
 use std::mem::{zeroed};
 use std::ptr::null;
 
-pub struct SvtAv1Encoder<T>{
-    //encoder_handle: *mut EbComponentType,
-    private_data: PhantomData<T>,
+pub struct SvtAv1Encoder{
+    encoder_handle: *mut EbComponentType,
 }
 
-impl<T> SvtAv1Encoder<T> {
+pub struct SvtAv1EncoderConfig {
+    pub config: EbSvtAv1EncConfiguration,
+    encoder_handle: *mut EbComponentType
+}
 
-    pub fn new() -> Result<SvtAv1Encoder<T>, EbErrorType::Type> {
+impl SvtAv1EncoderConfig {
+    pub fn new(width: u32, height: u32) -> Result<SvtAv1EncoderConfig, EbErrorType::Type>  {
         //library initialises both these values
-        let mut handle: *mut EbComponentType = unsafe{ zeroed() };
         let mut cfg: EbSvtAv1EncConfiguration = unsafe { zeroed() };
+        let mut handle: *mut EbComponentType = unsafe{ zeroed() };
 
         //initialise handle and set default values for config
         let ret: EbErrorType::Type = unsafe {
@@ -23,24 +25,55 @@ impl<T> SvtAv1Encoder<T> {
                                     &mut cfg as *mut EbSvtAv1EncConfiguration)
         };
         if ret != EbErrorType::EB_ErrorNone {
+            return Err(ret)
+        }
+        cfg.source_width = width;
+        cfg.source_height = height;
+
+        return Ok(SvtAv1EncoderConfig { config: cfg, encoder_handle: handle})
+    }
+
+    pub fn create_encoder(self) -> Result<SvtAv1Encoder, EbErrorType::Type>{
+        return SvtAv1Encoder::new(self)
+    }
+}
+
+impl SvtAv1Encoder {
+
+    pub fn new(mut cfg: SvtAv1EncoderConfig) -> Result<SvtAv1Encoder, EbErrorType::Type> {
+        assert!( cfg.config.source_width>=64 && cfg.config.source_height >= 64);
+        //configure encoder
+        let ret = unsafe{
+            svt_av1_enc_set_parameter(cfg.encoder_handle, &mut cfg.config as *mut EbSvtAv1EncConfiguration)
+        };
+        if ret != EbErrorType::EB_ErrorNone {
             return Result::Err(ret)
         }
 
-        //configure encoder
-        let ret = unsafe{
-            svt_av1_enc_set_parameter(handle, &mut cfg as *mut EbSvtAv1EncConfiguration)
-        };
-
         //initialise encoder
         let ret = unsafe{
-            svt_av1_enc_init(handle)
+            svt_av1_enc_init(cfg.encoder_handle)
         };
-
-        return Result::Ok(SvtAv1Encoder { private_data: PhantomData });
-        //return Result::Ok(SvtAv1Encoder { encoder_handle: handle, private_data: PhantomData });
+        if ret != EbErrorType::EB_ErrorNone {
+            return Result::Err(ret)
+        }
+        return Result::Ok(SvtAv1Encoder { encoder_handle: cfg.encoder_handle});
     }
 
 }
+
+impl Drop for SvtAv1Encoder {
+    fn drop(&mut self) {
+        unsafe {
+            let result1 = svt_av1_enc_deinit(self.encoder_handle);
+            let result2 = svt_av1_enc_deinit_handle(self.encoder_handle);
+            assert!(result1 == EbErrorType::EB_ErrorNone);
+            assert!(result2 == EbErrorType::EB_ErrorNone);
+        }
+    }
+}
+
+unsafe impl Send for SvtAv1Encoder{} //TODO check this cant be abused
 
 #[cfg(feature = "codec-trait")]
 mod encoder_trait {
@@ -51,9 +84,8 @@ mod encoder_trait {
     use crate::data::params::CodecParams;
     use crate::data::frame::ArcFrame;
     use crate::data::packet::Packet;
-    use crate::data::timeinfo::TimeInfo;
 
-    impl Encoder for SvtAv1Encoder<TimeInfo> {
+    impl Encoder for SvtAv1Encoder {
         fn get_extradata(&self) -> Option<Vec<u8>> {
             unimplemented!()
         }
