@@ -2,6 +2,8 @@
 use crate::ffi::*;
 use std::mem::{zeroed};
 use std::ptr::null;
+use av_data::frame::{Frame, MediaKind};
+use av_data::pixel::{Formaton, formats};
 
 pub struct SvtAv1Encoder{
     encoder_handle: *mut EbComponentType,
@@ -10,6 +12,40 @@ pub struct SvtAv1Encoder{
 pub struct SvtAv1EncoderConfig {
     pub config: EbSvtAv1EncConfiguration,
     encoder_handle: *mut EbComponentType
+}
+
+struct SvtBufferHeader {
+    header: EbBufferHeaderType
+}
+
+fn map_formaton(header: &mut SvtBufferHeader, fmt: &Formaton){
+    match fmt {
+        formats::YUV420 => {
+            //TODO set bit depth of header to 8
+        },
+        formats::YUV420_10 => {
+            //TODO set bit depth of header to 10
+        },
+        _ => {
+            unimplemented!()
+        }
+    }
+
+}
+
+impl SvtBufferHeader {
+    pub fn from_frame(frame: &Frame) -> SvtBufferHeader {
+        let mut buffer:SvtBufferHeader = unsafe { zeroed() };
+        if let MediaKind::Video(ref v) = frame.kind {
+            map_formaton(&mut buffer, &v.format)
+            //TODO set buffer.pic_type ( cant interpret currently as no av-data documentation on picture types)
+            //TODO set other buffer info (qp m luma sse cr_sse cb_sse flags luma_ssim cr_ssim cb_ssim)
+        }
+        buffer.dts = frame.t.dts.or_else(0);
+        buffer.pts = frame.t.pts.or_else(0);
+        //TODO set other buffer info (p_buffer size n_filled_len n_alloc_len p_app_private wrapper_ptr n_tick_count)
+        return buffer;
+    }
 }
 
 impl SvtAv1EncoderConfig {
@@ -58,6 +94,17 @@ impl SvtAv1Encoder {
             return Result::Err(ret)
         }
         return Result::Ok(SvtAv1Encoder { encoder_handle: cfg.encoder_handle});
+    }
+
+    pub fn encode(&mut self, frame: &Frame) -> Result<(), EbErrorType::Type> {
+        let mut buffer = SvtBufferHeader::from_frame(frame);
+        let result = unsafe {
+            svt_av1_enc_send_picture(self.encoder_handle, &mut buffer.header)
+        };
+        return match result {
+            EbErrorType::EB_ErrorNone => Ok(()),
+            e => Err(e)
+        }
     }
 
 }
